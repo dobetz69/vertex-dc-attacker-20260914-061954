@@ -1,8 +1,6 @@
 #!/bin/sh
 
-set +e
-
-MARKER="VRP_BUILD_CENSUS_20260914-070455"
+MARKER="VRP_BUILD_CENSUS_V2_20260914-071102"
 
 say() {
   printf '%s | %s\n' "$MARKER" "$*"
@@ -21,121 +19,156 @@ say "id=$(id 2>/dev/null)"
 say "whoami=$(whoami 2>/dev/null)"
 say "hostname=$(hostname 2>/dev/null)"
 say "pwd=$(pwd 2>/dev/null)"
-say "umask=$(umask 2>/dev/null)"
-
-section "OS"
-
-if [ -r /etc/os-release ]; then
-  while IFS= read -r L; do
-    say "os_release: $L"
-  done < /etc/os-release
-fi
-
 say "kernel=$(uname -a 2>/dev/null)"
 
-section "ENVIRONMENT_NAMES_ONLY"
+section "CONTAINER_INDICATORS"
 
-env 2>/dev/null   | sed 's/=.*//'   | sort -u   | while IFS= read -r N; do
-      say "env_name=$N"
-    done
-
-section "NONSECRET_COMMON_ENV_VALUES"
-
-for N in   PROJECT_ID   PROJECT_NUMBER   BUILD_ID   LOCATION   GOOGLE_CLOUD_PROJECT   GCLOUD_PROJECT   CLOUDSDK_CORE_PROJECT   HOME   USER   WORKSPACE
+for P in   /.dockerenv   /run/.containerenv
 do
-  eval "V=${$N-}"
-
-  if [ -n "$V" ]; then
-    say "$N=$V"
+  if [ -e "$P" ]; then
+    say "exists=$P"
   else
-    say "$N=<unset>"
+    say "absent=$P"
   fi
 done
 
-section "CGROUP"
+section "ENV_NAMES"
 
-for F in   /proc/1/cgroup   /proc/self/cgroup
+env 2>/dev/null   | sed 's/=.*//'   | sort -u   | while IFS= read -r N
 do
-  if [ -r "$F" ]; then
-    say "file=$F"
+  say "env_name=$N"
+done
 
-    head -80 "$F" 2>/dev/null       | while IFS= read -r L; do
-          say "cgroup: $L"
-        done
+section "SAFE_ENV_VALUES"
+
+for N in   PROJECT_ID   PROJECT_NUMBER   BUILD_ID   LOCATION   GOOGLE_CLOUD_PROJECT   GCLOUD_PROJECT   CLOUDSDK_CORE_PROJECT   HOME   USER   WORKSPACE
+do
+  V=$(printenv "$N" 2>/dev/null)
+
+  if [ -n "$V" ]; then
+    say "env[$N]=$V"
+  else
+    say "env[$N]=<unset>"
   fi
 done
 
 section "PROCESS_STATUS"
 
 if [ -r /proc/self/status ]; then
-  grep -E     '^(Name|Pid|PPid|Uid|Gid|Groups|CapInh|CapPrm|CapEff|CapBnd|NoNewPrivs|Seccomp):'     /proc/self/status     | while IFS= read -r L; do
-        say "status: $L"
-      done
+  grep -E     '^(Name|Pid|PPid|Uid|Gid|Groups|CapInh|CapPrm|CapEff|CapBnd|CapAmb|NoNewPrivs|Seccomp|Seccomp_filters):'     /proc/self/status 2>/dev/null     | while IFS= read -r L
+  do
+    say "status: $L"
+  done
 fi
 
-if command -v capsh >/dev/null 2>&1; then
-  capsh --print 2>/dev/null     | head -60     | while IFS= read -r L; do
-        say "capsh: $L"
-      done
+section "PID1"
+
+if [ -r /proc/1/status ]; then
+  grep -E     '^(Name|Pid|PPid|Uid|Gid|CapEff|NoNewPrivs|Seccomp):'     /proc/1/status 2>/dev/null     | while IFS= read -r L
+  do
+    say "pid1: $L"
+  done
 fi
 
-section "MOUNTS"
+section "CGROUP"
 
-mount 2>/dev/null   | head -100   | while IFS= read -r L; do
-      say "mount: $L"
+for F in /proc/1/cgroup /proc/self/cgroup
+do
+  if [ -r "$F" ]; then
+    while IFS= read -r L
+    do
+      say "cgroup[$F]: $L"
+    done < "$F"
+  fi
+done
+
+section "MOUNTINFO"
+
+if [ -r /proc/self/mountinfo ]; then
+  head -80 /proc/self/mountinfo 2>/dev/null     | while IFS= read -r L
+  do
+    say "mountinfo: $L"
+  done
+fi
+
+section "POTENTIAL_HOST_SOCKETS_EXISTENCE_ONLY"
+
+for P in   /var/run/docker.sock   /run/docker.sock   /run/containerd/containerd.sock   /var/run/containerd/containerd.sock   /run/crio/crio.sock   /var/run/crio/crio.sock
+do
+  if [ -e "$P" ]; then
+    ls -ld "$P" 2>/dev/null       | while IFS= read -r L
+    do
+      say "socket_candidate: $L"
     done
+  else
+    say "socket_absent=$P"
+  fi
+done
 
-section "FILESYSTEM"
+section "INTERESTING_PATH_EXISTENCE_ONLY"
 
-df -h 2>/dev/null   | head -40   | while IFS= read -r L; do
-      say "df: $L"
+for P in   /workspace   /builder   /code   /root/.docker   /root/.config/gcloud   /secrets   /var/secrets   /var/run/secrets
+do
+  if [ -e "$P" ]; then
+    ls -ld "$P" 2>/dev/null       | while IFS= read -r L
+    do
+      say "path: $L"
     done
+  else
+    say "path_absent=$P"
+  fi
+done
 
 section "NETWORK"
 
 if command -v ip >/dev/null 2>&1; then
-  ip route 2>/dev/null     | while IFS= read -r L; do
-        say "route: $L"
-      done
+  ip route 2>/dev/null     | while IFS= read -r L
+  do
+    say "route: $L"
+  done
 
-  ip -brief addr 2>/dev/null     | while IFS= read -r L; do
-        say "addr: $L"
-      done
+  ip -brief addr 2>/dev/null     | while IFS= read -r L
+  do
+    say "addr: $L"
+  done
 fi
 
 if [ -r /etc/resolv.conf ]; then
-  cat /etc/resolv.conf     | while IFS= read -r L; do
-        say "resolv: $L"
-      done
+  while IFS= read -r L
+  do
+    say "resolv: $L"
+  done < /etc/resolv.conf
 fi
 
 section "METADATA_DNS"
 
 if command -v getent >/dev/null 2>&1; then
-  getent hosts metadata.google.internal 2>/dev/null     | while IFS= read -r L; do
-        say "metadata_dns: $L"
-      done
+  getent hosts metadata.google.internal 2>/dev/null     | while IFS= read -r L
+  do
+    say "metadata_dns: $L"
+  done
 fi
 
 metadata_get() {
-  PATH_PART="$1"
+  P="$1"
 
-  if command -v curl >/dev/null 2>&1; then
-    R=$(
-      curl         -sS         --connect-timeout 2         --max-time 3         -H 'Metadata-Flavor: Google'         "http://metadata.google.internal/computeMetadata/v1/$PATH_PART"         2>/dev/null
-    )
+  if ! command -v curl >/dev/null 2>&1; then
+    say "metadata[$P]=<curl-unavailable>"
+    return
+  fi
 
-    RC=$?
+  R=$(
+    curl       -sS       --connect-timeout 2       --max-time 3       -H 'Metadata-Flavor: Google'       "http://metadata.google.internal/computeMetadata/v1/$P"       2>/dev/null
+  )
+  RC=$?
 
-    if [ "$RC" -eq 0 ] && [ -n "$R" ]; then
-      printf '%s\n' "$R"         | head -30         | while IFS= read -r L; do
-            say "metadata[$PATH_PART]=$L"
-          done
-    else
-      say "metadata[$PATH_PART]=<unavailable rc=$RC>"
-    fi
+  if [ "$RC" -eq 0 ] && [ -n "$R" ]; then
+    printf '%s\n' "$R"       | head -30       | while IFS= read -r L
+    do
+      say "metadata[$P]=$L"
+    done
   else
-    say "metadata[$PATH_PART]=<curl-unavailable>"
+    say "metadata[$P]=<unavailable rc=$RC>"
   fi
 }
 
@@ -154,14 +187,17 @@ metadata_get "instance/service-accounts/default/email"
 metadata_get "instance/service-accounts/default/aliases"
 metadata_get "instance/service-accounts/default/scopes"
 
-section "EXPLICIT_TOKEN_GUARD"
+section "PROHIBITED_ENDPOINT_GUARD"
 
-say "metadata_token_endpoint=NOT_REQUESTED"
-say "metadata_identity_endpoint=NOT_REQUESTED"
-say "secret_values=NOT_DUMPED"
+say "access_token=NOT_REQUESTED"
+say "identity_token=NOT_REQUESTED"
+say "recursive_metadata=NOT_REQUESTED"
+say "instance_attributes=NOT_REQUESTED"
+say "secrets=NOT_READ"
+say "sockets=NOT_CONNECTED"
 
 section "DONE"
 
-say "BUILD_CENSUS_COMPLETE"
+say "BUILD_CENSUS_V2_COMPLETE"
 
 exit 0
