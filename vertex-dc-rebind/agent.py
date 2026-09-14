@@ -1,8 +1,8 @@
 from google.cloud import storage
 
 BUCKET = "vrp-vertex-privdelta-306778072080-20260914-085059"
-OBJECT = "rebind-privdelta-20260914-085925.txt"
-SOURCE = "REBIND_PRIVDELTA_20260914-085925"
+OBJECT = "rebind-privdelta-20260914-090810.txt"
+SOURCE = "REBIND_PRIVDELTA_20260914-090810"
 
 class MarkerApp:
     def query(self, marker: str = ""):
