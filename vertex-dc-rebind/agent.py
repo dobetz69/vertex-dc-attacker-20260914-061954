@@ -6,7 +6,7 @@ from google.auth.transport.requests import AuthorizedSession
 PROJECT = "project-a09451ee-54c6-459e-bbe"
 ORG = "850018898700"
 RUNTIME_SA = "vrp70-re-control1@project-a09451ee-54c6-459e-bbe.iam.gserviceaccount.com"
-SOURCE = "S1A_CEILING_20260914-093151"
+SOURCE = "S1A_CEILING_20260914-094243"
 
 PROJECT_PERMISSIONS = [
     "resourcemanager.projects.setIamPolicy",
